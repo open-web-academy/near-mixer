@@ -1987,9 +1987,13 @@ dependencies = [
 name = "near-mixer"
 version = "0.1.0"
 dependencies = [
+ "borsh",
  "near-sdk",
+ "near-token",
  "near-workspaces",
+ "serde",
  "serde_json",
+ "sha2",
  "tokio",
 ]
 
