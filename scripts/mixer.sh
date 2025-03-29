@@ -6,47 +6,32 @@ NEAR_ACCOUNT=""
 CONTRACT_ID=""
 NETWORK="testnet"
 
-# Helper function for generating hashes and proofs
-generate_commitment() {
-    local secret="$RANDOM-$RANDOM-$RANDOM"
-    echo "$secret" > .mixer_secret.txt
+# Helper function for generating hashes and secrets
+generate_secret() {
+    # Generate a random secret that's more secure than just RANDOM
+    openssl rand -hex 16 > .mixer_secret.txt
     echo "Secret saved to .mixer_secret.txt"
-    
-    # Simple hash generation
-    echo -n "$secret" | sha256sum | awk '{print $1}'
+    cat .mixer_secret.txt
 }
 
-generate_nullifier() {
+generate_commitment_hash() {
     if [ ! -f .mixer_secret.txt ]; then
-        echo "Error: No secret found. Please deposit first."
+        echo "Error: No secret found. Please generate a secret first."
         exit 1
     fi
     
     local secret=$(cat .mixer_secret.txt)
-    echo -n "withdraw-$secret" | sha256sum | awk '{print $1}'
+    echo -n "$secret" | openssl dgst -sha256 -hex | sed 's/^.* //'
 }
 
-generate_proof() {
-    if [ ! -f .mixer_secret.txt ]; then
-        echo "Error: No secret found. Please deposit first."
-        exit 1
-    fi
-    
-    local secret=$(cat .mixer_secret.txt)
-    local commitment=$(echo -n "$secret" | sha256sum | awk '{print $1}')
-    local nullifier=$(echo -n "withdraw-$secret" | sha256sum | awk '{print $1}')
-    
-    # Simple proof generation (in a real implementation this would be cryptographic)
-    local proof_base=$(echo -n "$nullifier$commitment" | sha256sum | awk '{print $1}')
-    echo "${proof_base:0:1}${proof_base}"
-}
-
+# Main functions
 print_help() {
     echo "NEAR Mixer CLI"
     echo ""
     echo "Usage:"
     echo "  $0 init <your-account> <contract-id> [network]  - Initialize CLI"
     echo "  $0 deploy                                       - Deploy the contract"
+    echo "  $0 secret                                       - Generate a new secret"
     echo "  $0 deposit <amount>                             - Deposit NEAR to the mixer"
     echo "  $0 withdraw <recipient>                         - Withdraw NEAR to an account"
     echo "  $0 stats                                        - Show mixer pool statistics"
@@ -54,6 +39,7 @@ print_help() {
     echo "Examples:"
     echo "  $0 init alice.testnet mixer.alice.testnet testnet"
     echo "  $0 deploy"
+    echo "  $0 secret"
     echo "  $0 deposit 1"
     echo "  $0 withdraw bob.testnet"
 }
@@ -105,6 +91,14 @@ deploy_contract() {
     echo "Contract deployed and initialized!"
 }
 
+create_secret() {
+    generate_secret
+    echo ""
+    echo "New secret created and saved to .mixer_secret.txt"
+    echo "IMPORTANT: Keep this secret secure. You'll need it to withdraw your funds later."
+    echo "Secret: $(cat .mixer_secret.txt)"
+}
+
 deposit() {
     load_config
     
@@ -114,19 +108,32 @@ deposit() {
     fi
     
     local amount="$1"
-    # Convert to yoctoNEAR
-    local yocto_amount=$(echo "$amount * 10^24" | bc)
     
-    echo "Generating commitment for your deposit..."
-    local commitment=$(generate_commitment)
+    # Validate denomination
+    if [[ ! "$amount" =~ ^(1|10|100)$ ]]; then
+        echo "Error: Amount must be 1, 10, or 100 NEAR"
+        exit 1
+    fi
+    
+    # Check if we need to generate a new secret
+    if [ ! -f .mixer_secret.txt ]; then
+        echo "No existing secret found. Generating a new one..."
+        generate_secret
+    fi
+    
+    echo "Calculating commitment hash from your secret..."
+    local commitment_hash=$(generate_commitment_hash)
     
     echo "Depositing $amount NEAR to the mixer..."
-    near call $CONTRACT_ID deposit '{"commitment": "'"$commitment"'"}' \
-        --accountId $NEAR_ACCOUNT --networkId $NETWORK --amount $amount --gas 300000000000000
+    near call $CONTRACT_ID deposit "{\"commitment_hash\": \"$commitment_hash\"}" \
+        --accountId $NEAR_ACCOUNT --networkId $NETWORK --deposit $amount --gas 300000000000000
     
-    echo "Deposit complete! Your commitment: $commitment"
+    echo "Deposit complete!"
     echo ""
     echo "IMPORTANT: Keep your secret secure. You'll need it to withdraw funds."
+    echo "Secret: $(cat .mixer_secret.txt)"
+    echo "Commitment hash: $commitment_hash"
+    echo ""
     echo "Wait at least 24 hours before withdrawing for better privacy."
 }
 
@@ -140,17 +147,20 @@ withdraw() {
     
     local recipient="$1"
     
-    echo "Generating withdrawal data..."
-    local commitment=$(echo -n "$(cat .mixer_secret.txt)" | sha256sum | awk '{print $1}')
-    local nullifier=$(generate_nullifier)
-    local proof=$(generate_proof)
+    if [ ! -f .mixer_secret.txt ]; then
+        echo "Error: No secret found. You need the secret used during deposit to withdraw."
+        exit 1
+    fi
     
-    echo "Withdrawing funds to $recipient..."
-    near call $CONTRACT_ID withdraw "{\"recipient\": \"$recipient\", \"nullifier\": \"$nullifier\", \"commitment\": \"$commitment\", \"proof\": \"$proof\"}" \
+    local secret=$(cat .mixer_secret.txt)
+    
+    echo "Withdrawing funds to $recipient using saved secret..."
+    near call $CONTRACT_ID withdraw "{\"recipient\": \"$recipient\", \"secret\": \"$secret\"}" \
         --accountId $NEAR_ACCOUNT --networkId $NETWORK --gas 300000000000000
     
-    echo "Withdrawal complete!"
-    rm -f .mixer_secret.txt
+    echo "Withdrawal initiated!"
+    echo "Note: You can delete your secret file now if the withdrawal was successful."
+    echo "To delete secret: rm .mixer_secret.txt"
 }
 
 show_stats() {
@@ -160,6 +170,18 @@ show_stats() {
     near view $CONTRACT_ID get_pool_stats '{}' --networkId $NETWORK
 }
 
+check_dependency() {
+    if ! command -v "$1" &> /dev/null; then
+        echo "Error: $1 is required but not installed."
+        echo "Please install $1 and try again."
+        exit 1
+    fi
+}
+
+# Check dependencies
+check_dependency "near"
+check_dependency "openssl"
+
 # Main script execution
 case "$1" in
     init)
@@ -167,6 +189,9 @@ case "$1" in
         ;;
     deploy)
         deploy_contract
+        ;;
+    secret)
+        create_secret
         ;;
     deposit)
         deposit "$2"
