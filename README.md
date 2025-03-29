@@ -170,10 +170,42 @@ For maximum privacy:
 - Use common denominations (1 NEAR is best for anonymity)
 - Consider using Tor or a VPN when interacting with the contract
 
+## Privacy Limitations
+
+This mixer provides basic privacy features but **does not guarantee complete anonymity**. Understanding these limitations is crucial:
+
+### Current Limitations
+
+1. **Correlation Vulnerabilities**: 
+   - Deposits and withdrawals can be linked through timing analysis (especially if withdrawing exactly after the minimum delay)
+   - Amount tracking (each denomination minus fees creates predictable withdrawal amounts)
+   - Low volume pools reduce anonymity significantly
+
+2. **No True Fund Mixing**:
+   - Funds are not truly mixed between users' deposits
+   - Each deposit corresponds to a specific withdrawal
+
+3. **Secret Management Risks**:
+   - If your secret is exposed, your transaction privacy is compromised
+   - The secret must be revealed to the blockchain during withdrawal
+
+### For a Higher Privacy Level
+
+Although this mixer provides basic transaction privacy, users seeking stronger anonymity should:
+
+- **Use larger pools**: The more users in a denomination pool, the better the privacy
+- **Delay withdrawals randomly**: Wait varying amounts of time well beyond the minimum period
+- **Use multiple hops**: After withdrawal, transfer to another wallet before final use
+- **Consider advanced solutions**: For critical privacy needs, consider protocols with zero-knowledge proofs
+
+For most casual use cases, this mixer adequately breaks the direct transaction link, but it's not suitable for situations requiring guaranteed anonymity.
+
 ## Project Structure
 
 - `src/lib.rs` - Main contract implementation
 - `scripts/mixer.sh` - CLI tool for interacting with the contract
+
+
 
 ## License
 

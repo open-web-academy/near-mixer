@@ -3,7 +3,8 @@ use near_sdk::collections::{LookupMap, UnorderedSet};
 use near_sdk::{env, near_bindgen, AccountId, PanicOnDefault, Promise, Timestamp, NearToken};
 use sha2::{Digest, Sha256};
 
-const MIN_DELAY: u64 = 3600 * 24; // 24 hours in seconds
+// const MIN_DELAY: u64 = 3600 * 24; // 24 hours in seconds
+const MIN_DELAY: u64 = 180; // 3 mins in second
 const DENOMINATIONS: [NearToken; 3] = [
     NearToken::from_near(1),    // 1 NEAR
     NearToken::from_near(10),   // 10 NEAR
